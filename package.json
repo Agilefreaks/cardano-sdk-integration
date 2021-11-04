@@ -1,5 +1,6 @@
 {
     "devDependencies": {
-      "cardano-wallet-js": "^1.2.3"
+        "cardano-wallet-js": "^1.2.3",
+        "dotenv": "^10.0.0"
     }
 }

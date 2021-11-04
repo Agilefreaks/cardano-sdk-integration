@@ -1,5 +1,8 @@
-const { WalletServer, Seed } = require('cardano-wallet-js');
-let walletServer = WalletServer.init('http://192.168.0.246:8090/v2');
+const { WalletServer, Seed, AddressWallet } = require('cardano-wallet-js');
+require('dotenv').config()
+let walletServer = WalletServer.init(process.env.CARDANO_API);
+let recoveryPhrase = process.env.WALLET_RECOVERY_PHRASE;
+
 
 async function getNetworkInfo() {
     let information = await walletServer.getNetworkInformation();
@@ -11,14 +14,8 @@ async function getNetworkParameters() {
     console.log(parameters);
 }
 
-function getRecoveryPhrase() {
-    let recoveryPhrase = Seed.generateRecoveryPhrase();
-    let words = Seed.toMnemonicList(recoveryPhrase);
-    console.log(words);
-}
 
 async function createWallet(passphrase, name) {
-    let recoveryPhrase = Seed.generateRecoveryPhrase();
     let mnemonic_sentence = Seed.toMnemonicList(recoveryPhrase);
     let walletName = `${name}s-wallet`;
         
@@ -26,17 +23,34 @@ async function createWallet(passphrase, name) {
     console.log(`${walletName} was created. Insert the following Recovery phrase '${recoveryPhrase}' into the .env File!`);
 }
 
+async function getWallet(walletIndex) {
+    let wallets = await walletServer.wallets();
+    let walletID = wallets[walletIndex].id;
+    return await walletServer.getShelleyWallet(walletID);
+}
+
 async function seeAllWallets() {
-    console.log(await walletServer.wallets());
+    allWallets = await walletServer.wallets()
+    wallets = allWallets.map((w,i) => {
+        return { index: i, id: w.id, name: w.name }
+    });
+    console.log(wallets);
+
 }
 
 async function deleteWallet(walletNumber) {
     let wallets = await walletServer.wallets();
     let walletID = wallets[walletNumber].id;
-    console.log(walletID);
     let wallet = await walletServer.getShelleyWallet(walletID);
-    console.log(wallet);
-    wallet.delete;
+    response = await wallet.delete();
+    console.log(response);
+}
+
+function getRecoveryPhrase() {
+    let recoveryPhrase = Seed.generateRecoveryPhrase();
+    console.log(recoveryPhrase);
+    let words = Seed.toMnemonicList(recoveryPhrase);
+    console.log(words);
 }
 
 async function seeWalletAddresses(walletNumber) {
@@ -57,12 +71,30 @@ async function getWalletBalance(walletNumber) {
     console.log(availableBalance);
 }
 
+async function sendPayment(walletNumber, receiver, amount) {
+    let wallets = await walletServer.wallets();
+    let walletID = wallets[walletNumber].id;
+    let wallet = await walletServer.getShelleyWallet(walletID);
+    let receiverAddress = [new AddressWallet(receiver)];
+    response = await wallet.sendPayment('cardanoexpert', receiverAddress, [amount]);
+    console.log(response);
+    console.log(`Sent ${amount} ADA from ${wallet} to ${receiverAddress}`);
+}
 
-createWallet('cardanoexpert', 'Edi');
-// deleteWallet(0);
-//seeAllWallets();
+async function getWalletTransactions(walletIndex) {
+    console.log(await (await getWallet(walletIndex)).getTransactions());
+}
+
+
+// deleteWallet(5);
+// createWallet('cardanoexpert', 'Adi');
+// seeAllWallets();
 // getNetworkInfo();
+// getRecoveryPhrase();
 // getNetworkParameters()
 //seeWalletAddresses(0);
-//getWalletBalance(0);
+// getWalletBalance(0);
 
+
+// sendPayment(0,'addr_test1qpptryt4jruzxekfnuf9h4syykl9z0u8sre2lssu099yghsfh5y0dmlysk2sa68n02ex349vmlh9sgwugqjgn76hv8kqaz4tf8', 1_000_000)
+getWalletTransactions(0);
