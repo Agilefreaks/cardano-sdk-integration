@@ -1,4 +1,4 @@
-const { WalletServer, Seed, AddressWallet } = require('cardano-wallet-js');
+const { WalletServer, Seed, AddressWallet, AssetWallet, TokenWallet } = require('cardano-wallet-js');
 require('dotenv').config()
 let walletServer = WalletServer.init(process.env.CARDANO_API);
 let recoveryPhrase = process.env.WALLET_RECOVERY_PHRASE;
@@ -26,7 +26,9 @@ async function createWallet(passphrase, name) {
 async function getWallet(walletIndex) {
     let wallets = await walletServer.wallets();
     let walletID = wallets[walletIndex].id;
-    return await walletServer.getShelleyWallet(walletID);
+    let abc= await walletServer.getShelleyWallet(walletID);
+
+    console.log(abc);
 }
 
 async function seeAllWallets() {
@@ -85,16 +87,112 @@ async function getWalletTransactions(walletIndex) {
     console.log(await (await getWallet(walletIndex)).getTransactions());
 }
 
+async function getWalletAddress(walletNumber, addressIndex) {
+    let wallets = await walletServer.wallets();
+    let walletID = wallets[walletNumber].id;
+    let wallet = await walletServer.getShelleyWallet(walletID);
+    let address = (await wallet.getAddresses())[addressIndex];
 
+    return address;
+}
+
+async function createNativeToken() {
+    let address = await getWalletAddress(0, 0);
+
+    let keyPair= Seed.generateKeyPair();
+    let policyVKey = keyPair.publicKey;
+
+    let keyHash = Seed.getKeyHash(policyVKey);
+    let script = Seed.buildSingleIssuerScript(keyHash);
+
+    //generate policy id
+    let scriptHash = Seed.getScriptHash(script);
+    let policyId = Seed.getPolicyId(scriptHash);
+
+    let data = {};
+    let tokenData = {}
+    tokenData[policyId] = {
+        Freak: {
+            arweaveId: "arweave-id",
+            ipfsId: "ipfs-id",
+            name: "Freak",
+            description: "Freak crypto coin",
+            type: "Coin"
+    }
+    };
+    data[0] = tokenData;
+
+    // asset
+    let asset = new AssetWallet(policyId, "Freak", 1000000);
+
+    // token
+    let tokens = [new TokenWallet(asset, script, [keyPair])];
+
+    //scripts
+    let scripts = tokens.map(t => t.script);
+
+    // get min ada for address holding tokens
+    let minAda = Seed.getMinUtxoValueWithAssets([asset], config);
+    let amounts = [minAda];
+
+    // get ttl info
+    let info = await walletServer.getNetworkInformation();
+    let ttl = info.node_tip.absolute_slot_number * 12000;
+
+    // get coin selection structure (without the assets)
+    let coinSelection = await wallet.getCoinSelection(addresses, amounts, data);
+
+    // add signing keys
+    let rootKey = Seed.deriveRootKey(payeer.mnemonic_sentence); 
+    let signingKeys = coinSelection.inputs.map(i => {
+        let privateKey = Seed.deriveKey(rootKey, i.derivation_path).to_raw_key();
+        return privateKey;
+    });
+
+    // add policy signing keys
+    tokens.filter(t => t.scriptKeyPairs).forEach(t => signingKeys.push(...t.scriptKeyPairs.map(k => k.privateKey.to_raw_key())));
+
+    let metadata = Seed.buildTransactionMetadata(data);
+
+    // the wallet currently doesn't support including tokens not previuosly minted
+    // so we need to include it manually.
+    coinSelection.outputs = coinSelection.outputs.map(output => {
+        if (output.address === addresses[0].address) {
+            output.assets = tokens.map(t => {
+                let asset = WalletsAssetsAvailable = {
+                    policy_id: t.asset.policy_id,
+                    asset_name: Buffer.from(t.asset.asset_name).toString('hex'),
+                    quantity: t.asset.quantity
+                };
+                return asset;
+            });
+        }
+        return output;
+    });
+
+    // we need to sing the tx and calculate the actual fee and the build again 
+    // since the coin selection doesnt calculate the fee with the asset tokens included
+    let txBody = Seed.buildTransactionWithToken(coinSelection, ttl, tokens, signingKeys, {data: data, config: config});
+    let tx = Seed.sign(txBody, signingKeys, metadata, scripts);
+
+    // submit the tx    
+    let signed = Buffer.from(tx.to_bytes()).toString('hex');
+    let txId = await walletServer.submitTx(signed);
+
+    console.log(txId);
+}
 // deleteWallet(5);
 // createWallet('cardanoexpert', 'Adi');
 // seeAllWallets();
 // getNetworkInfo();
 // getRecoveryPhrase();
 // getNetworkParameters()
-//seeWalletAddresses(0);
+// seeWalletAddresses(0);
+// getWalletAddress(0, 2);
 // getWalletBalance(0);
+getWallet(0);
+// createNativeToken();
 
 
 // sendPayment(0,'addr_test1qpptryt4jruzxekfnuf9h4syykl9z0u8sre2lssu099yghsfh5y0dmlysk2sa68n02ex349vmlh9sgwugqjgn76hv8kqaz4tf8', 1_000_000)
-getWalletTransactions(0);
+// getWalletTransactions(0);
